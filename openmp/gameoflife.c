@@ -53,21 +53,32 @@ void show(double* currentfield, int w, int h) {
   int x,y;
   for (y = 0; y < h; y++) {
     for (x = 0; x < w; x++) printf(currentfield[calcIndex(w, x,y)] ? "\033[07m  \033[m" : "  ");
-    //printf("\033[E");
+    printf("\033[E");
     printf("\n");
   }
   fflush(stdout);
 }
  
- 
+int coutLifingsPeriodic(unsigned *currentfield, int x, int y, int w, int h) {
+    int n = 0;
+    for (int y1 = y - 1; y1 <= y + 1; y1++) {
+        for (int x1 = x - 1; x1 <= x + 1; x1++) {
+            if (currentfield[calcIndex(w, (x1 + w) % w, (y1 + h) % h)]) {
+                n++;
+            }
+        }
+    }
+    return n;
+}  
+
+
 void evolve(double* currentfield, double* newfield, int w, int h) {
   int x,y;
   for (y = 0; y < h; y++) {
     for (x = 0; x < w; x++) {
-      
-      //TODO FIXME impletent rules and assign new value
-      
-      newfield[calcIndex(w, x,y)] = !newfield[calcIndex(w, x,y)];
+      int n = coutLifingsPeriodic(currentfield, x, y, w, h);
+            if (currentfield[calcIndex(w, x, y)]) n--;
+            newfield[calcIndex(w, x, y)] = (n == 3 || (n == 2 && currentfield[calcIndex(w, x, y)]));
     }
   }
 }

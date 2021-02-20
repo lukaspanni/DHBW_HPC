@@ -60,7 +60,7 @@ void show(double* currentfield, int w, int h) {
   fflush(stdout);
 }
  
-int countLivingsPeriodic(double *currentfield, int x, int y, int w, int h, int offset) {
+int countLivingsPeriodic(double *currentfield, int x, int y, int w, int h) {
     int n = 0;
     for (int y1 = y - 1; y1 <= y + 1; y1++) {
         for (int x1 = x - 1; x1 <= x + 1; x1++) {
@@ -74,20 +74,21 @@ int countLivingsPeriodic(double *currentfield, int x, int y, int w, int h, int o
 
 
 void evolve(double* currentfield, double* newfield, int w, int h, int px, int py, int tw, int th) {
-  int x, y;
   #pragma omp parallel num_threads(px*py)
   {
+    int x, y;
     int this_thread = omp_get_thread_num();
+    //printf("\n\nTHREAD: %ld\n\n", this_thread);
     int tx = this_thread % tw;
     int ty = this_thread / tw;
     int offsetX = tx * tw;
     int offsetY = ty * th;
-    int offset = calcIndex(w, offsetX, offsetY);
 
     for (y = 0; y < th; y++) {
       for (x = 0; x < tw; x++) {
-        int n = countLivingsPeriodic(currentfield, x, y, w, h, offset);
-        int index = calcIndex(w, x, y) + offset;
+        int n = countLivingsPeriodic(currentfield, x + offsetX, y + offsetY, w, h);
+        int index = calcIndex(w, x + offsetX, y + offsetY);
+        //printf(" INDEX: %d %ld(%d|%d)\n", index, this_thread, x + offsetX, y + offsetY);
               if (currentfield[index]) n--;
               newfield[index] = (n == 3 || (n == 2 && currentfield[index]));
       }
@@ -104,12 +105,12 @@ void filling(double* currentfield, int w, int h) {
  
 void game(int tw, int th) {
   int px, py;
-  px = 1;
-  py = 1;
+  px = 2;
+  py = 2;
 
   int w, h;
-  w = tw*px;
-  h = th*py;
+  w = tw * px;
+  h = th * py;
 
   double *currentfield = calloc(w*h, sizeof(double));
   double *newfield     = calloc(w*h, sizeof(double));
@@ -122,7 +123,7 @@ void game(int tw, int th) {
   filling(currentfield, w, h);
   long t;
   for (t=0;t<TimeSteps;t++) {
-    show(currentfield, w, h);
+    //show(currentfield, w, h);
     evolve(currentfield, newfield, w, h, px, py, tw, th);
     
     printf("%ld timestep\n",t);
@@ -146,7 +147,7 @@ int main(int c, char **v) {
   int tw = 0, th = 0;
   if (c > 1) tw = atoi(v[1]); ///< read width
   if (c > 2) th = atoi(v[2]); ///< read height
-  if (tw <= 0) tw = 30; ///< default thread-width
-  if (th <= 0) th = 30; ///< default thread-height
+  if (tw <= 0) tw = 4; ///< default thread-width
+  if (th <= 0) th = 4; ///< default thread-height
   game(tw, th);
 }

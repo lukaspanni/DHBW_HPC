@@ -59,7 +59,7 @@ void show(double* currentfield, int w, int h) {
   fflush(stdout);
 }
  
-int coutLifingsPeriodic(unsigned *currentfield, int x, int y, int w, int h) {
+int conutLivingsPeriodic(unsigned *currentfield, int x, int y, int w, int h) {
     int n = 0;
     for (int y1 = y - 1; y1 <= y + 1; y1++) {
         for (int x1 = x - 1; x1 <= x + 1; x1++) {
@@ -76,7 +76,7 @@ void evolve(double* currentfield, double* newfield, int w, int h) {
   int x,y;
   for (y = 0; y < h; y++) {
     for (x = 0; x < w; x++) {
-      int n = coutLifingsPeriodic(currentfield, x, y, w, h);
+      int n = conutLivingsPeriodic(currentfield, x, y, w, h);
             if (currentfield[calcIndex(w, x, y)]) n--;
             newfield[calcIndex(w, x, y)] = (n == 3 || (n == 2 && currentfield[calcIndex(w, x, y)]));
     }

@@ -21,3 +21,4 @@ run: all
 	
 clean:
 	$(RM) $(TARGET)
+	$(RM) ./*.vti

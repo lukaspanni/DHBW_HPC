@@ -7,10 +7,11 @@
 #include <stdbool.h>
 #include <math.h>
 #include <sys/time.h>
+#include <omp.h>
 
 #define calcIndex(width, x,y)  ((y)*(width) + (x))
 
-long TimeSteps = 100;
+long TimeSteps = 5;
 
 void writeVTK2(long timestep, double *data, char prefix[1024], int w, int h) {
   char filename[2048];  
@@ -59,7 +60,7 @@ void show(double* currentfield, int w, int h) {
   fflush(stdout);
 }
  
-int conutLivingsPeriodic(unsigned *currentfield, int x, int y, int w, int h) {
+int countLivingsPeriodic(double *currentfield, int x, int y, int w, int h, int offset) {
     int n = 0;
     for (int y1 = y - 1; y1 <= y + 1; y1++) {
         for (int x1 = x - 1; x1 <= x + 1; x1++) {
@@ -72,13 +73,24 @@ int conutLivingsPeriodic(unsigned *currentfield, int x, int y, int w, int h) {
 }  
 
 
-void evolve(double* currentfield, double* newfield, int w, int h) {
-  int x,y;
-  for (y = 0; y < h; y++) {
-    for (x = 0; x < w; x++) {
-      int n = conutLivingsPeriodic(currentfield, x, y, w, h);
-            if (currentfield[calcIndex(w, x, y)]) n--;
-            newfield[calcIndex(w, x, y)] = (n == 3 || (n == 2 && currentfield[calcIndex(w, x, y)]));
+void evolve(double* currentfield, double* newfield, int w, int h, int px, int py, int tw, int th) {
+  int x, y;
+  #pragma omp parallel num_threads(px*py)
+  {
+    int this_thread = omp_get_thread_num();
+    int tx = this_thread % tw;
+    int ty = this_thread / tw;
+    int offsetX = tx * tw;
+    int offsetY = ty * th;
+    int offset = calcIndex(w, offsetX, offsetY);
+
+    for (y = 0; y < th; y++) {
+      for (x = 0; x < tw; x++) {
+        int n = countLivingsPeriodic(currentfield, x, y, w, h, offset);
+        int index = calcIndex(w, x, y) + offset;
+              if (currentfield[index]) n--;
+              newfield[index] = (n == 3 || (n == 2 && currentfield[index]));
+      }
     }
   }
 }
@@ -90,22 +102,33 @@ void filling(double* currentfield, int w, int h) {
   }
 }
  
-void game(int w, int h) {
+void game(int tw, int th) {
+  int px, py;
+  px = 1;
+  py = 1;
+
+  int w, h;
+  w = tw*px;
+  h = th*py;
+
   double *currentfield = calloc(w*h, sizeof(double));
   double *newfield     = calloc(w*h, sizeof(double));
   
   //printf("size unsigned %d, size long %d\n",sizeof(float), sizeof(long));
   
+ 
+
+
   filling(currentfield, w, h);
   long t;
   for (t=0;t<TimeSteps;t++) {
     show(currentfield, w, h);
-    evolve(currentfield, newfield, w, h);
+    evolve(currentfield, newfield, w, h, px, py, tw, th);
     
     printf("%ld timestep\n",t);
     writeVTK2(t,currentfield,"gol", w, h);
     
-    usleep(200000);
+    usleep(2000);
 
     //SWAP
     double *temp = currentfield;
@@ -119,10 +142,11 @@ void game(int w, int h) {
 }
  
 int main(int c, char **v) {
-  int w = 0, h = 0;
-  if (c > 1) w = atoi(v[1]); ///< read width
-  if (c > 2) h = atoi(v[2]); ///< read height
-  if (w <= 0) w = 30; ///< default width
-  if (h <= 0) h = 30; ///< default height
-  game(w, h);
+  srand(42);
+  int tw = 0, th = 0;
+  if (c > 1) tw = atoi(v[1]); ///< read width
+  if (c > 2) th = atoi(v[2]); ///< read height
+  if (tw <= 0) tw = 30; ///< default thread-width
+  if (th <= 0) th = 30; ///< default thread-height
+  game(tw, th);
 }

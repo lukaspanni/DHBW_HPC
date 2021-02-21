@@ -11,8 +11,6 @@
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
-long TimeSteps = 20;
-
 void writeVTK2(long timestep, double *data, char prefix[1024], int w, int h) {
     char filename[2048];
     int x, y;
@@ -120,11 +118,7 @@ void filling(double *currentfield, int w, int h) {
     }
 }
 
-void game(int tw, int th) {
-    int px, py;
-    px = 16;
-    py = 8;
-
+void game(long timeSteps, int tw, int th, int px, int py) {
     int w, h;
     w = tw * px;
     h = th * py;
@@ -136,11 +130,10 @@ void game(int tw, int th) {
 
 
 
-
     filling(currentfield, w, h);
     long t;
-    for (t = 0; t < TimeSteps; t++) {
-        //show(currentfield, w, h);
+    for (t = 0; t < timeSteps; t++) {
+        show(currentfield, w, h);
         evolve(currentfield, newfield, w, h, px, py, tw, th);
 
         printf("%ld timestep\n\n\n\n", t);
@@ -161,10 +154,18 @@ void game(int tw, int th) {
 
 int main(int c, char **v) {
     srand(42 * 0x815);
-    int tw = 0, th = 0;
-    if (c > 1) tw = atoi(v[1]); ///< read width
-    if (c > 2) th = atoi(v[2]); ///< read height
-    if (tw <= 0) tw = 1; ///< default thread-width
-    if (th <= 0) th = 1; ///< default thread-height
-    game(tw, th);
+    long n = 0;
+    int tw = 0, th = 0, px = 0, py = 0;
+    if(c > 1) n = atoi(v[1]);   ///< read timeSteps
+    if (c > 2) tw = atoi(v[2]); ///< read thread-width
+    if (c > 3) th = atoi(v[3]); ///< read thread-height
+    if (c > 4) px = atoi(v[4]); ///< read thread-count X
+    if (c > 5) py = atoi(v[5]); ///< read thread-count Y
+    if(n <= 0) n = 100;         ///< default timeSteps
+    if (tw <= 0) tw = 10;       ///< default thread-width
+    if (th <= 0) th = 10;       ///< default thread-height
+    if (px <= 0) px = 1;        ///< default thread-count X
+    if (py <= 0) py = 1;        ///< default thread-count Y
+
+    game(n, tw, th, px, py);
 }

@@ -84,7 +84,7 @@ void evolve(double *currentfield, double *newfield, int w, int h, int px, int py
         int ty = this_thread / px;
         int offsetX = tx * tw;
         int offsetY = ty * th;
-        printf("THREAD: %i with offset (%i | %i)\n", this_thread, offsetX, offsetY);
+        //printf("THREAD: %i with offset (%i | %i)\n", this_thread, offsetX, offsetY);
 
         for (y = 0; y < th; y++) {
             for (x = 0; x < tw; x++) {
@@ -133,13 +133,13 @@ void game(long timeSteps, int tw, int th, int px, int py) {
     filling(currentfield, w, h);
     long t;
     for (t = 0; t < timeSteps; t++) {
-        show(currentfield, w, h);
+        //show(currentfield, w, h);
         evolve(currentfield, newfield, w, h, px, py, tw, th);
 
-        printf("%ld timestep\n\n\n\n", t);
-        writeVTK2(t, currentfield, "gol", w, h);
+        //printf("%ld timestep\n\n\n\n", t);
+        //writeVTK2(t, currentfield, "gol", w, h);
 
-        usleep(2000);
+        //usleep(2000);
 
         //SWAP
         double *temp = currentfield;

@@ -19,6 +19,11 @@ $(TARGET): $(TARGET).c
 run: all
 	OMP_NUM_THREADS=6 ./$(TARGET)
 	
+vti-clean:
+	$(RM) ./*.vti
+	$(RM) ./*.pvti
+
 clean:
 	$(RM) $(TARGET)
 	$(RM) ./*.vti
+	$(RM) ./*.pvti

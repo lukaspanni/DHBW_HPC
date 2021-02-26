@@ -6,22 +6,24 @@
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
-void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int h) {
+void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int tw, int th, int offsetX, int offsetY) {
     char filename[2048];
     int x, y;
 
-    int offsetX = 0;
-    int offsetY = 0;
+    // int offsetX = 0;
+    // int offsetY = 0;
     float deltax = 1.0;
-    long nxy = w * h * sizeof(float);
+    long nxy = tw * th * sizeof(float);
 
-    snprintf(filename, sizeof(filename), "%s-%05ld%s", prefix, timestep, ".vti");
+    int threadnum = omp_get_thread_num();
+
+    snprintf(filename, sizeof(filename), "%s-%05ld-%03d%s", prefix, timestep, threadnum, ".vti");
     FILE *fp = fopen(filename, "w");
 
     fprintf(fp, "<?xml version=\"1.0\"?>\n");
     fprintf(fp, "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
     fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d %d %d\" Origin=\"0 0 0\" Spacing=\"%le %le %le\">\n", offsetX,
-            offsetX + w, offsetY, offsetY + h, 0, 0, deltax, deltax, 0.0);
+            offsetX + tw, offsetY, offsetY + th, 0, 0, deltax, deltax, 0.0);
     fprintf(fp, "<CellData Scalars=\"%s\">\n", prefix);
     fprintf(fp, "<DataArray type=\"Float32\" Name=\"%s\" format=\"appended\" offset=\"0\"/>\n", prefix);
     fprintf(fp, "</CellData>\n");
@@ -30,9 +32,9 @@ void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int 
     fprintf(fp, "_");
     fwrite((unsigned char *) &nxy, sizeof(long), 1, fp);
 
-    for (y = 0; y < h; y++) {
-        for (x = 0; x < w; x++) {
-            float value = data[calcIndex(w, x, y)];
+    for (y = 0; y < th; y++) {
+        for (x = 0; x < tw; x++) {
+            float value = data[calcIndex(w, x + offsetX, y + offsetY)];
             fwrite((unsigned char *) &value, sizeof(float), 1, fp);
         }
     }
@@ -40,6 +42,42 @@ void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int 
     fprintf(fp, "\n</AppendedData>\n");
     fprintf(fp, "</VTKFile>\n");
     fclose(fp);
+}
+
+void writeVTK2_parallel(long timestep, char prefix[1024], char vti_prefix[1024], int w, int h, int px, int py){
+    char filename[2048];
+
+    snprintf(filename, sizeof(filename), "%s-%05ld%s", prefix, timestep, ".pvti");
+    FILE *fp = fopen(filename, "w");
+
+    fprintf(fp, "<?xml version=\"1.0\"?>\n");
+    fprintf(fp, "<VTKFile type=\"PImageData\" version=\"0.1\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
+
+    fprintf(fp, "<PImageData WholeExtent=\"%d %d %d %d %d %d\" Origin=\"0 0 0\" Spacing=\"%le %le %le\">\n", 0,
+                w, 0, h, 0, 0, 1.0, 1.0, 0.0);
+    fprintf(fp, "<PCellData Scalars=\"%s\">\n", vti_prefix);
+    fprintf(fp, "<PDataArray type=\"Float32\" Name=\"%s\" format=\"appended\" offset=\"0\"/>\n", vti_prefix);
+    fprintf(fp, "</PCellData>\n");
+
+    for(int x = 0; x < px; x++){
+        for(int y = 0; y < py; y++){
+            
+            int start_x = x * (w/px);
+            int end_x = start_x + (w/px);
+            int start_y = y * (h/py);
+            int end_y = start_y + (w/py);
+
+            char file[2048];
+            snprintf(file, sizeof(file), "%s-%05ld-%03d%s", vti_prefix, timestep, px * y + x, ".vti");
+
+            fprintf(fp, "<Piece Extent=\"%d %d %d %d 0 0\" Source=\"%s\"/>\n", start_x, end_x, start_y, end_y, file);
+        }
+    }
+    fprintf(fp, "</PImageData>\n");
+
+    fprintf(fp, "</VTKFile>\n");
+    fclose(fp);
+
 }
 
 
@@ -67,9 +105,9 @@ int countLivingsPeriodic(double *currentfield, int x, int y, int w, int h) {
 }
 
 
-void evolve(double *currentfield, double *newfield, int w, int h, int px, int py, int tw, int th) {
+void evolve(int timestep, double *currentfield, double *newfield, int w, int h, int px, int py, int tw, int th) {
 
-#pragma omp parallel num_threads(px*py) default(none) shared(px, tw, th, currentfield, newfield, w, h)
+#pragma omp parallel num_threads(px*py) default(none) shared(currentfield, newfield) firstprivate(timestep, px, tw, th,  w, h)
 
 
     {
@@ -105,6 +143,7 @@ void evolve(double *currentfield, double *newfield, int w, int h, int px, int py
                 */
             }
         }
+        writeVTK2(timestep, currentfield, "gol", w, tw, th, offsetX, offsetY);
     }
 }
 
@@ -200,11 +239,12 @@ void game(long timeSteps, int tw, int th, int px, int py) {
     long t;
     for (t = 0; t < timeSteps; t++) {
         //show(currentfield, w, h);
-        evolve(currentfield, newfield, w, h, px, py, tw, th);
+        evolve(t, currentfield, newfield, w, h, px, py, tw, th);
+
+        writeVTK2_parallel(t, "golp", "gol", w, h, px, py);
+    
 
         printf("%ld timestep\n", t);
-        writeVTK2(t, currentfield, "gol", w, h);
-
         //usleep(2000);
 
         //SWAP

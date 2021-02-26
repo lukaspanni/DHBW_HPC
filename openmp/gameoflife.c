@@ -6,6 +6,8 @@
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
+#define performance
+
 void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int tw, int th, int offsetX, int offsetY) {
     char filename[2048];
     int x, y;
@@ -143,7 +145,9 @@ void evolve(int timestep, double *currentfield, double *newfield, int w, int h, 
                 */
             }
         }
+#ifndef performance
         writeVTK2(timestep, currentfield, "gol", w, tw, th, offsetX, offsetY);
+#endif
     }
 }
 
@@ -241,10 +245,11 @@ void game(long timeSteps, int tw, int th, int px, int py) {
         //show(currentfield, w, h);
         evolve(t, currentfield, newfield, w, h, px, py, tw, th);
 
-        writeVTK2_parallel(t, "golp", "gol", w, h, px, py);
-    
+#ifndef performance
+        writeVTK2_parallel(t, "golp", "gol", w, h, px, py);    
 
         printf("%ld timestep\n", t);
+#endif
         //usleep(2000);
 
         //SWAP

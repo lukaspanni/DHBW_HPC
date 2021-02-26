@@ -1,17 +1,12 @@
-#include <endian.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <string.h>
-#include <stdbool.h>
-#include <math.h>
-#include <sys/time.h>
 #include <omp.h>
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
-void writeVTK2(long timestep, double *data, char prefix[1024], int w, int h) {
+void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int h) {
     char filename[2048];
     int x, y;
 
@@ -74,7 +69,9 @@ int countLivingsPeriodic(double *currentfield, int x, int y, int w, int h) {
 
 void evolve(double *currentfield, double *newfield, int w, int h, int px, int py, int tw, int th) {
 
-#pragma omp parallel num_threads(px*py)
+#pragma omp parallel num_threads(px*py) default(none) shared(px, tw, th, currentfield, newfield, w, h)
+
+
     {
 
         int this_thread = omp_get_thread_num();
@@ -111,10 +108,78 @@ void evolve(double *currentfield, double *newfield, int w, int h, int px, int py
     }
 }
 
-void filling(double *currentfield, int w, int h) {
-    int i;
-    for (i = 0; i < h * w; i++) {
-        currentfield[i] = (rand() < RAND_MAX / 10) ? 1 : 0; ///< init domain randomly
+void fillRandom(double *currentField, int w, int h) {
+    for (int i = 0; i < h * w; i++) {
+        currentField[i] = (rand() < RAND_MAX / 10) ? 1 : 0; ///< init domain randomly
+    }
+}
+
+void readUntilNewLine(FILE *pFile) {
+    int readCharacter;
+    do {
+        readCharacter = fgetc(pFile);
+    } while (readCharacter != '\n' && readCharacter != EOF);
+}
+
+void setCellState(double *currentField, int alive, int *index, int *count) {
+    //printf("Filling %d characters at index %d with %d\n", (*count), (*index), alive);
+    while((*count) > 0) {
+        currentField[(*index)] = (double)alive;
+        //printf("Setting %d to %d\n", (*index), alive);
+        (*index)++;
+        (*count)--;
+    }
+}
+
+void fillFromFile(double *currentField, int w, char *fileName) {
+    FILE *file = fopen(fileName, "r");
+
+    //Files start with a 2 line header (comment + size/rule info)
+    readUntilNewLine(file);
+    readUntilNewLine(file);
+
+    int index = 0;
+    int count = 0;
+
+
+    int readCharacter = fgetc(file);
+    while(readCharacter != EOF) {
+        if(readCharacter >= '0' && readCharacter <= '9') {
+            count = count * 10 + (readCharacter - '0');
+        } else if(readCharacter == 'b' || readCharacter == 'o') {
+            int alive = readCharacter == 'o';
+            if(count == 0) {
+                //Direct color switch without preceding number
+                count = 1;
+            }
+            setCellState(currentField, alive, &index, &count);
+        } else if(readCharacter == '$' || readCharacter == '!') {
+            //End of line, or end of file -> Pad until end of line with empty cells
+            if((index % w) != 0) {
+                count = (w - (index % w));
+            }
+            setCellState(currentField, 0, &index, &count);
+        } else if(readCharacter == '#') {
+            readUntilNewLine(file);
+        } else if(readCharacter == '\n') {
+
+        }
+        else {
+            printf("Invalid character read: %d", readCharacter);
+            exit(1);
+        }
+
+        readCharacter = fgetc(file);
+    }
+}
+
+void filling(double *currentField, int w, int h, char *fileName) {
+    if (access(fileName, R_OK) == 0) {
+        //File exists
+        fillFromFile(currentField, w, fileName);
+    } else {
+        //File does not exist
+        fillRandom(currentField, w, h);
     }
 }
 
@@ -130,14 +195,15 @@ void game(long timeSteps, int tw, int th, int px, int py) {
 
 
 
-    filling(currentfield, w, h);
+
+    filling(currentfield, w, h, "file.rle");
     long t;
     for (t = 0; t < timeSteps; t++) {
         //show(currentfield, w, h);
         evolve(currentfield, newfield, w, h, px, py, tw, th);
 
-        //printf("%ld timestep\n\n\n\n", t);
-        //writeVTK2(t, currentfield, "gol", w, h);
+        printf("%ld timestep\n", t);
+        writeVTK2(t, currentfield, "gol", w, h);
 
         //usleep(2000);
 
@@ -162,8 +228,8 @@ int main(int c, char **v) {
     if (c > 4) px = atoi(v[4]); ///< read thread-count X
     if (c > 5) py = atoi(v[5]); ///< read thread-count Y
     if(n <= 0) n = 100;         ///< default timeSteps
-    if (tw <= 0) tw = 10;       ///< default thread-width
-    if (th <= 0) th = 10;       ///< default thread-height
+    if (tw <= 0) tw = 18;       ///< default thread-width
+    if (th <= 0) th = 12;       ///< default thread-height
     if (px <= 0) px = 1;        ///< default thread-count X
     if (py <= 0) py = 1;        ///< default thread-count Y
 

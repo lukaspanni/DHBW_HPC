@@ -8,24 +8,23 @@
 
 //#define performance
 
-void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int tw, int th, int offsetX, int offsetY) {
+void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int processWidth, int processHeight, int offsetX, int offsetY) {
     char filename[2048];
     int x, y;
 
-    // int offsetX = 0;
-    // int offsetY = 0;
     float deltax = 1.0;
-    long nxy = tw * th * sizeof(float);
+    long nxy = processWidth * processHeight * sizeof(float);
 
-    int threadnum = omp_get_thread_num();
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    snprintf(filename, sizeof(filename), "%s-%05ld-%03d%s", prefix, timestep, threadnum, ".vti");
+    snprintf(filename, sizeof(filename), "%s-%05ld-%03d%s", prefix, timestep, rank, ".vti");
     FILE *fp = fopen(filename, "w");
 
     fprintf(fp, "<?xml version=\"1.0\"?>\n");
     fprintf(fp, "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
     fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d %d %d\" Origin=\"0 0 0\" Spacing=\"%le %le %le\">\n", offsetX,
-            offsetX + tw, offsetY, offsetY + th, 0, 0, deltax, deltax, 0.0);
+            offsetX + processWidth, offsetY, offsetY + processHeight, 0, 0, deltax, deltax, 0.0);
     fprintf(fp, "<CellData Scalars=\"%s\">\n", prefix);
     fprintf(fp, "<DataArray type=\"Float32\" Name=\"%s\" format=\"appended\" offset=\"0\"/>\n", prefix);
     fprintf(fp, "</CellData>\n");
@@ -34,9 +33,10 @@ void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int 
     fprintf(fp, "_");
     fwrite((unsigned char *) &nxy, sizeof(long), 1, fp);
 
-    for (y = 0; y < th; y++) {
-        for (x = 0; x < tw; x++) {
-            float value = data[calcIndex(w, x + offsetX, y + offsetY)];
+    // start at 1 and end -1 -> ghost layer
+    for (y = 1; y < processHeight-1; y++) {
+        for (x = 1; x < processWidth-1; x++) {
+            float value = data[calcIndex(w, x, y)];
             fwrite((unsigned char *) &value, sizeof(float), 1, fp);
         }
     }
@@ -230,8 +230,11 @@ void game(long timeSteps, int tw, int th, int px, int py) {
 
     //printf("size unsigned %d, size long %d\n",sizeof(float), sizeof(long));
 
-
     filling(currentfield, w, h, "file.rle");
+
+
+    return;
+
     long t;
     for (t = 0; t < timeSteps; t++) {
         //show(currentfield, w, h);
@@ -277,22 +280,19 @@ int main(int c, char **v) {
     MPI_Cart_shift(comm, 0, 1, &left, &right);
     printf("[%d] Coordinates: %d\tNeighbor-Left: %d\tNeighbor-Right: %d\n", rank, *coordinates, left, right);
 
-
-    return 0;
-
     srand(42 * 0x815);
     long n = 0;
     int tw = 0, th = 0, px = 0, py = 0;
     if(c > 1) n = atoi(v[1]);   ///< read timeSteps
-    if (c > 2) tw = atoi(v[2]); ///< read thread-width
-    if (c > 3) th = atoi(v[3]); ///< read thread-height
-    if (c > 4) px = atoi(v[4]); ///< read thread-count X
-    if (c > 5) py = atoi(v[5]); ///< read thread-count Y
+    if (c > 2) tw = atoi(v[2]); ///< read process-width
+    if (c > 3) th = atoi(v[3]); ///< read process-height
+    if (c > 4) px = atoi(v[4]); ///< read process-count X
+    if (c > 5) py = atoi(v[5]); ///< read process-count Y
     if(n <= 0) n = 100;         ///< default timeSteps
-    if (tw <= 0) tw = 18;       ///< default thread-width
-    if (th <= 0) th = 12;       ///< default thread-height
-    if (px <= 0) px = 1;        ///< default thread-count X
-    if (py <= 0) py = 1;        ///< default thread-count Y
+    if (tw <= 0) tw = 18;       ///< default process-width
+    if (th <= 0) th = 12;       ///< default process-height
+    if (px <= 0) px = 1;        ///< default process-count X
+    if (py <= 0) py = 1;        ///< default process-count Y
 
     game(n, tw, th, px, py);
 }

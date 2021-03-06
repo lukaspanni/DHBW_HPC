@@ -22,5 +22,11 @@ $(TARGET): $(TARGET).c
 run: all
 	mpirun -n $(PROC) ./$(TARGET)
 
+vti-clean:
+	$(RM) ./*.vti
+	$(RM) ./*.pvti
+
 clean:
 	$(RM) $(TARGET)
+	$(RM) ./*.vti
+	$(RM) ./*.pvti

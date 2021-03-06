@@ -2,11 +2,11 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <omp.h>
+#include <mpi/mpi.h>
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
-#define performance
+//#define performance
 
 void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int tw, int th, int offsetX, int offsetY) {
     char filename[2048];
@@ -109,11 +109,6 @@ int countLivingsPeriodic(double *currentfield, int x, int y, int w, int h) {
 
 void evolve(int timestep, double *currentfield, double *newfield, int w, int h, int px, int py, int tw, int th) {
 
-#pragma omp parallel num_threads(px*py) default(none) shared(currentfield, newfield) firstprivate(timestep, px, tw, th,  w, h)
-
-
-    {
-
         int this_thread = omp_get_thread_num();
 
         int x, y;
@@ -143,8 +138,7 @@ void evolve(int timestep, double *currentfield, double *newfield, int w, int h, 
                        n,
                        currentfield[index]);
                 */
-            }
-        }
+            }  
 #ifndef performance
         writeVTK2(timestep, currentfield, "gol", w, tw, th, offsetX, offsetY);
 #endif
@@ -237,13 +231,11 @@ void game(long timeSteps, int tw, int th, int px, int py) {
     //printf("size unsigned %d, size long %d\n",sizeof(float), sizeof(long));
 
 
-
-
     filling(currentfield, w, h, "file.rle");
     long t;
     for (t = 0; t < timeSteps; t++) {
         //show(currentfield, w, h);
-        evolve(t, currentfield, newfield, w, h, px, py, tw, th);
+        //evolve(t, currentfield, newfield, w, h, px, py, tw, th);
 
 #ifndef performance
         writeVTK2_parallel(t, "golp", "gol", w, h, px, py);    
@@ -264,6 +256,30 @@ void game(long timeSteps, int tw, int th, int px, int py) {
 }
 
 int main(int c, char **v) {
+
+    int commSize, rank;
+
+    MPI_Init(&c, &v);
+    MPI_Comm_size(MPI_COMM_WORLD, &commSize);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    printf("Initialized, Size: %d, Rank: %d\n", commSize, rank);
+
+    MPI_Comm comm;
+    int dimensions[] = {commSize};
+    int periodic[] = {1};
+    MPI_Cart_create(MPI_COMM_WORLD, 1, dimensions, periodic, 0, &comm);
+
+    int coordinates[1];
+    MPI_Cart_coords(comm, rank, 1, &coordinates);
+
+    int right, left;
+    MPI_Cart_shift(comm, 0, 1, &left, &right);
+    printf("[%d] Coordinates: %d\tNeighbor-Left: %d\tNeighbor-Right: %d\n", rank, *coordinates, left, right);
+
+
+    return 0;
+
     srand(42 * 0x815);
     long n = 0;
     int tw = 0, th = 0, px = 0, py = 0;

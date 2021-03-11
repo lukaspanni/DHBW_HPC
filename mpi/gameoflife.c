@@ -6,6 +6,10 @@
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
+int rank;
+int right_neighbor, left_neighbor, top_neighbor, bottom_neighbor;
+
+
 //#define performance
 
 void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int processWidth, int processHeight, int offsetX, int offsetY) {
@@ -220,33 +224,112 @@ void filling(double *currentField, int w, int h, char *fileName) {
     }
 }
 
-void game(long timeSteps, int tw, int th, int px, int py) {
-    int w, h;
-    w = tw * px;
-    h = th * py;
+void game(MPI_Comm* comm, long timeSteps, int tw, int th, int px, int py) {
+    int h,w;
+    h = th+2;
+    w = tw+2;
 
     double *currentfield = calloc(w * h, sizeof(double));
     double *newfield = calloc(w * h, sizeof(double));
 
-    //printf("size unsigned %d, size long %d\n",sizeof(float), sizeof(long));
+    int size_arrays[2] = {h, w};
+    int size_subarrays_vert[2] = {h, 1};
+    int size_subarrays_hori[2] = {1, w};
 
-    filling(currentfield, w, h, "file.rle");
+    MPI_Datatype ghTop;
+    MPI_Datatype ghBottom;
+    MPI_Datatype ghRight;
+    MPI_Datatype ghLeft;
+
+    MPI_Datatype innerTop;
+    MPI_Datatype innerBottom;
+    MPI_Datatype innerRight;
+    MPI_Datatype innerLeft;
+
+    int n = 2;
+    int start_indices[2] = {0, 0};
+    MPI_Type_create_subarray(n, size_arrays, size_subarrays_vert, start_indices, MPI_ORDER_C, MPI_DOUBLE, &ghLeft);
+    start_indices[1] = 1;
+    MPI_Type_create_subarray(n, size_arrays, size_subarrays_vert, start_indices, MPI_ORDER_C, MPI_DOUBLE, &innerLeft);
+    start_indices[1] = w - 1;
+    MPI_Type_create_subarray(n, size_arrays, size_subarrays_vert, start_indices, MPI_ORDER_C, MPI_DOUBLE, &ghRight);
+    start_indices[1] = w - 2;
+    MPI_Type_create_subarray(n, size_arrays, size_subarrays_vert, start_indices, MPI_ORDER_C, MPI_DOUBLE, &innerRight);
+
+    MPI_Type_commit(&ghLeft);
+    MPI_Type_commit(&innerLeft);
+    MPI_Type_commit(&ghRight);
+    MPI_Type_commit(&innerRight);
+
+    start_indices[0] = 0;
+    start_indices[1] = 0;
+    MPI_Type_create_subarray(n, size_arrays, size_subarrays_hori, start_indices, MPI_ORDER_C, MPI_DOUBLE, &ghTop);
+    start_indices[0] = 1;
+    MPI_Type_create_subarray(n, size_arrays, size_subarrays_hori, start_indices, MPI_ORDER_C, MPI_DOUBLE, &innerTop);
+    start_indices[0] = h - 1;
+    MPI_Type_create_subarray(n, size_arrays, size_subarrays_hori, start_indices, MPI_ORDER_C, MPI_DOUBLE, &ghBottom);
+    start_indices[0] = h - 2;
+    MPI_Type_create_subarray(n, size_arrays, size_subarrays_hori, start_indices, MPI_ORDER_C, MPI_DOUBLE, &innerBottom);
 
 
-    return;
+    MPI_Type_commit(&ghTop);
+    MPI_Type_commit(&innerTop);
+    MPI_Type_commit(&ghBottom);
+    MPI_Type_commit(&innerBottom);
+
+
+    if(rank == 0){
+        // load file / random init in one process
+        int w, h;
+        w = tw * px;
+        h = th * py;
+        double *loadedfield = calloc(w * h, sizeof(double));
+        filling(loadedfield, w, h, "file.rle");
+        
+        free(loadedfield);
+    }
+    else{
+        
+    }
+    
+    //-> arrays of request/status for async communication
+    MPI_Request request[8];
+    MPI_Status status[8];
 
     long t;
     for (t = 0; t < timeSteps; t++) {
-        //show(currentfield, w, h);
+        MPI_Isend(currentfield, 1, innerLeft, left_neighbor, 1, *comm, request + 0);
+        MPI_Irecv(currentfield, 1, ghRight, right_neighbor, 1, *comm, request + 1);
+        MPI_Irecv(currentfield, 1, ghLeft, left_neighbor, 2, *comm, request + 2);
+        MPI_Isend(currentfield, 1, innerRight, right_neighbor, 2, *comm, request + 3);
+
+        MPI_Isend(currentfield, 1, innerTop, top_neighbor, 3, *comm, request + 4);
+        MPI_Irecv(currentfield, 1, ghBottom, bottom_neighbor, 3, *comm, request + 5);
+        MPI_Irecv(currentfield, 1, ghTop, top_neighbor, 4, *comm, request + 6);
+        MPI_Isend(currentfield, 1, innerBottom, bottom_neighbor, 4, *comm, request + 7);
+
+        MPI_Waitall(8, request, status);
+
         //evolve(t, currentfield, newfield, w, h, px, py, tw, th);
 
 #ifndef performance
-        writeVTK2_parallel(t, "golp", "gol", w, h, px, py);    
+        writeVTK2_parallel(t, "golp", "gol", tw*px, th*py, px, py);    
 
         printf("%ld timestep\n", t);
 #endif
-        //usleep(2000);
 
+        int equal = 1;
+        for(int i = 0; i < w*h; i++){
+            if(currentfield[i] != newfield[i]){
+                equal = 0;
+                break;
+            }
+        }
+        int reduced_equal;
+        MPI_Allreduce(&equal, &reduced_equal, 1, MPI_INT, MPI_LAND, *comm);
+        if(reduced_equal){
+            break;
+        }
         //SWAP
         double *temp = currentfield;
         currentfield = newfield;
@@ -259,26 +342,7 @@ void game(long timeSteps, int tw, int th, int px, int py) {
 }
 
 int main(int c, char **v) {
-
-    int commSize, rank;
-
     MPI_Init(&c, &v);
-    MPI_Comm_size(MPI_COMM_WORLD, &commSize);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-    printf("Initialized, Size: %d, Rank: %d\n", commSize, rank);
-
-    MPI_Comm comm;
-    int dimensions[] = {commSize};
-    int periodic[] = {1};
-    MPI_Cart_create(MPI_COMM_WORLD, 1, dimensions, periodic, 0, &comm);
-
-    int coordinates[1];
-    MPI_Cart_coords(comm, rank, 1, &coordinates);
-
-    int right, left;
-    MPI_Cart_shift(comm, 0, 1, &left, &right);
-    printf("[%d] Coordinates: %d\tNeighbor-Left: %d\tNeighbor-Right: %d\n", rank, *coordinates, left, right);
 
     srand(42 * 0x815);
     long n = 0;
@@ -289,10 +353,36 @@ int main(int c, char **v) {
     if (c > 4) px = atoi(v[4]); ///< read process-count X
     if (c > 5) py = atoi(v[5]); ///< read process-count Y
     if(n <= 0) n = 100;         ///< default timeSteps
-    if (tw <= 0) tw = 18;       ///< default process-width
-    if (th <= 0) th = 12;       ///< default process-height
-    if (px <= 0) px = 1;        ///< default process-count X
-    if (py <= 0) py = 1;        ///< default process-count Y
+    if (tw <= 0) tw = 10;       ///< default process-width
+    if (th <= 0) th = 10;       ///< default process-height
+    if (px <= 0) px = 2;        ///< default process-count X
+    if (py <= 0) py = 2;        ///< default process-count Y
 
-    game(n, tw, th, px, py);
+    int commSize;
+
+    MPI_Comm_size(MPI_COMM_WORLD, &commSize);
+    if(commSize != px*py){
+        printf("ERROR Comm-Size != px*py\n");
+        return -1;
+    }
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    printf("Initialized, Size: %d, Rank: %d\n", commSize, rank);
+
+    MPI_Comm comm;
+    int dimensions[] = {px, py};
+    int periodic[] = {1, 1};
+    MPI_Cart_create(MPI_COMM_WORLD, 2, dimensions, periodic, 0, &comm);
+
+    int coordinates[2];
+    MPI_Cart_coords(comm, rank, 2, coordinates);
+
+    MPI_Cart_shift(comm, 1, 1, &left_neighbor, &right_neighbor);
+    MPI_Cart_shift(comm, 0, 1, &top_neighbor, &bottom_neighbor);
+    printf("[%d] Coordinates: (%d|%d)\tNeighbor-Left: %d\tNeighbor-Right: %d\tNeighbor-Top: %d\tNeighbor-Bottom: %d\n", rank, *coordinates, *(coordinates+1), left_neighbor, right_neighbor, top_neighbor, bottom_neighbor);
+
+
+    game(&comm, n, tw, th, px, py);
+
+    MPI_Finalize();
 }

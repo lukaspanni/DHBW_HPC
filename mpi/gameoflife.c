@@ -12,7 +12,7 @@ int right_neighbor, left_neighbor, top_neighbor, bottom_neighbor;
 
 //#define performance
 
-void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int processWidth, int processHeight, int offsetX, int offsetY) {
+void writeVTK2(long timestep, const double *data, char prefix[1024], int processWidth, int processHeight, int offsetX, int offsetY) {
     char filename[2048];
     int x, y;
 
@@ -40,7 +40,7 @@ void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int 
     // start at 1 and end -1 -> ghost layer
     for (y = 1; y < processHeight-1; y++) {
         for (x = 1; x < processWidth-1; x++) {
-            float value = data[calcIndex(w, x, y)];
+            float value = data[calcIndex(processWidth, x, y)];
             fwrite((unsigned char *) &value, sizeof(float), 1, fp);
         }
     }
@@ -111,21 +111,15 @@ int countLivingsPeriodic(double *currentfield, int x, int y, int w, int h) {
 }
 
 
-void evolve(int timestep, double *currentfield, double *newfield, int w, int h, int px, int py, int tw, int th) {
-
-        int this_thread = omp_get_thread_num();
+void evolve(int timestep, double *currentfield, double *newfield, int w, int h, MPI_Comm* comm) {
 
         int x, y;
-        int tx = this_thread % px;
-        int ty = this_thread / px;
-        int offsetX = tx * tw;
-        int offsetY = ty * th;
-        //printf("THREAD: %i with offset (%i | %i)\n", this_thread, offsetX, offsetY);
 
-        for (y = 0; y < th; y++) {
-            for (x = 0; x < tw; x++) {
-                int n = countLivingsPeriodic(currentfield, x + offsetX, y + offsetY, w, h);
-                int index = calcIndex(w, x + offsetX, y + offsetY);
+        //printf("THREAD: %i with offset (%i | %i)\n", this_thread, offsetX, offsetY);
+        for (y = 1; y < h; y++) {
+            for (x = 1; x < w; x++) {
+                int n = countLivingsPeriodic(currentfield, x, y, w, h);
+                int index = calcIndex(w, x, y);
                 if (currentfield[index]) n--;
                 newfield[index] = (n == 3 || (n == 2 && currentfield[index]));
 
@@ -144,7 +138,9 @@ void evolve(int timestep, double *currentfield, double *newfield, int w, int h, 
                 */
             }  
 #ifndef performance
-        writeVTK2(timestep, currentfield, "gol", w, tw, th, offsetX, offsetY);
+        int coordinates[2];
+        MPI_Cart_coords(*comm, rank, 2, coordinates);
+        writeVTK2(timestep, currentfield, "gol", w, h, coordinates[1]*w, coordinates[0]*h);
 #endif
     }
 }
@@ -229,9 +225,6 @@ void game(MPI_Comm* comm, long timeSteps, int tw, int th, int px, int py) {
     h = th+2;
     w = tw+2;
 
-    double *currentfield = calloc(w * h, sizeof(double));
-    double *newfield = calloc(w * h, sizeof(double));
-
     int size_arrays[2] = {h, w};
     int size_subarrays_vert[2] = {h, 1};
     int size_subarrays_hori[2] = {1, w};
@@ -278,20 +271,29 @@ void game(MPI_Comm* comm, long timeSteps, int tw, int th, int px, int py) {
     MPI_Type_commit(&innerBottom);
 
 
-    if(rank == 0){
-        // load file / random init in one process
-        int w, h;
-        w = tw * px;
-        h = th * py;
-        double *loadedfield = calloc(w * h, sizeof(double));
-        filling(loadedfield, w, h, "file.rle");
-        
-        free(loadedfield);
-    }
-    else{
-        
-    }
+    // if(rank == 0){
+    //     // load file / random init in one process
+    //     int w, h;
+    //     w = tw * px;
+    //     h = th * py;
+    //     double *loadedfield = calloc(w * h, sizeof(double));
+    //     filling(loadedfield, w, h, "file.rle");
+
+    //     free(loadedfield);
+    // }
+    // else{
+    //     MPI_Status status;
+    //     MPI_Recv(currentfield, w * h, MPI_DOUBLE, 0, rank, *comm, status);
+    // }
     
+
+    double *currentfield = calloc(w * h, sizeof(double));
+    double *newfield = calloc(w * h, sizeof(double));
+
+    //Also fills ghost-layer, will be overwritten
+    fillRandom(currentfield, w, h);
+
+
     //-> arrays of request/status for async communication
     MPI_Request request[8];
     MPI_Status status[8];
@@ -310,7 +312,7 @@ void game(MPI_Comm* comm, long timeSteps, int tw, int th, int px, int py) {
 
         MPI_Waitall(8, request, status);
 
-        //evolve(t, currentfield, newfield, w, h, px, py, tw, th);
+        evolve(t, currentfield, newfield, w, h, comm);
 
 #ifndef performance
         writeVTK2_parallel(t, "golp", "gol", tw*px, th*py, px, py);    

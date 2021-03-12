@@ -9,8 +9,7 @@
 int rank;
 int right_neighbor, left_neighbor, top_neighbor, bottom_neighbor;
 
-
-//#define performance
+#define performance
 
 void writeVTK2(long timestep, const double *data, char prefix[1024], int processWidth, int processHeight, int offsetX, int offsetY) {
     char filename[2048];
@@ -371,7 +370,9 @@ int main(int c, char **v) {
     }
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+#ifndef performance
     printf("Initialized, Size: %d, Rank: %d\n", commSize, rank);
+#endif
 
     MPI_Comm comm;
     int dimensions[] = {px, py};
@@ -383,8 +384,10 @@ int main(int c, char **v) {
 
     MPI_Cart_shift(comm, 1, 1, &left_neighbor, &right_neighbor);
     MPI_Cart_shift(comm, 0, 1, &top_neighbor, &bottom_neighbor);
-    printf("[%d] Coordinates: (%d|%d)\tNeighbor-Left: %d\tNeighbor-Right: %d\tNeighbor-Top: %d\tNeighbor-Bottom: %d\n", rank, *coordinates, *(coordinates+1), left_neighbor, right_neighbor, top_neighbor, bottom_neighbor);
 
+#ifndef performance
+    printf("[%d] Coordinates: (%d|%d)\tNeighbor-Left: %d\tNeighbor-Right: %d\tNeighbor-Top: %d\tNeighbor-Bottom: %d\n", rank, *coordinates, *(coordinates+1), left_neighbor, right_neighbor, top_neighbor, bottom_neighbor);
+#endif
 
     game(&comm, n, tw, th, px, py);
 

@@ -28,7 +28,7 @@ void writeVTK2(long timestep, const double *data, char prefix[1024], int process
     fprintf(fp, "<?xml version=\"1.0\"?>\n");
     fprintf(fp, "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
     fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d %d %d\" Origin=\"0 0 0\" Spacing=\"%le %le %le\">\n", offsetX,
-            offsetX + processWidth, offsetY, offsetY + processHeight, 0, 0, deltax, deltax, 0.0);
+            offsetX + processWidth - 2, offsetY, offsetY + processHeight - 2, 0, 0, deltax, deltax, 0.0);
     fprintf(fp, "<CellData Scalars=\"%s\">\n", prefix);
     fprintf(fp, "<DataArray type=\"Float32\" Name=\"%s\" format=\"appended\" offset=\"0\"/>\n", prefix);
     fprintf(fp, "</CellData>\n");
@@ -140,7 +140,7 @@ void evolve(int timestep, double *currentfield, double *newfield, int w, int h, 
 #ifndef performance
         int coordinates[2];
         MPI_Cart_coords(*comm, rank, 2, coordinates);
-        writeVTK2(timestep, currentfield, "gol", w, h, coordinates[1]*w, coordinates[0]*h);
+        writeVTK2(timestep, currentfield, "gol", w, h, coordinates[1]*(w - 2), coordinates[0]*(h-2));
 #endif
     }
 }
@@ -315,9 +315,11 @@ void game(MPI_Comm* comm, long timeSteps, int tw, int th, int px, int py) {
         evolve(t, currentfield, newfield, w, h, comm);
 
 #ifndef performance
-        writeVTK2_parallel(t, "golp", "gol", tw*px, th*py, px, py);    
+        if(rank == 0) {
+            writeVTK2_parallel(t, "golp", "gol", tw*px, th*py, px, py);
+            printf("%ld timestep\n", t);
+        }
 
-        printf("%ld timestep\n", t);
 #endif
 
         int equal = 1;

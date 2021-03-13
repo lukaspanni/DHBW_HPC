@@ -6,7 +6,7 @@
 
 #define calcIndex(width, x, y)  ((y)*(width) + (x))
 
-//#define performance
+#define performance
 
 void writeVTK2(long timestep, const double *data, char prefix[1024], int w, int tw, int th, int offsetX, int offsetY) {
     char filename[2048];

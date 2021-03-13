@@ -9,25 +9,21 @@
 int rank;
 int right_neighbor, left_neighbor, top_neighbor, bottom_neighbor;
 
-#define performance
+//#define performance
 
-void writeVTK2(long timestep, const double *data, char prefix[1024], int processWidth, int processHeight, int offsetX, int offsetY) {
+void writeVTK2(long timestep, const double *data, char prefix[1024], int processWidth, int processHeight, int offsetX, int offsetY, int px, int coordinates[2]) {
     char filename[2048];
     int x, y;
 
-    float deltax = 1.0;
     long nxy = processWidth * processHeight * sizeof(float);
 
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-    snprintf(filename, sizeof(filename), "%s-%05ld-%03d%s", prefix, timestep, rank, ".vti");
+    snprintf(filename, sizeof(filename), "%s-%05ld-%03d%s", prefix, timestep, px* coordinates[1] + coordinates[0], ".vti");
     FILE *fp = fopen(filename, "w");
 
     fprintf(fp, "<?xml version=\"1.0\"?>\n");
     fprintf(fp, "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
-    fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d %d %d\" Origin=\"0 0 0\" Spacing=\"%le %le %le\">\n", offsetX,
-            offsetX + processWidth - 2, offsetY, offsetY + processHeight - 2, 0, 0, deltax, deltax, 0.0);
+    fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d 0 0\" Origin=\"0 0 0\" Spacing=\"1.0 1.0 0.0\">\n", offsetY, offsetY + processHeight - 2, offsetX,
+            offsetX + processWidth - 2);
     fprintf(fp, "<CellData Scalars=\"%s\">\n", prefix);
     fprintf(fp, "<DataArray type=\"Float32\" Name=\"%s\" format=\"appended\" offset=\"0\"/>\n", prefix);
     fprintf(fp, "</CellData>\n");
@@ -70,7 +66,7 @@ void writeVTK2_parallel(long timestep, char prefix[1024], char vti_prefix[1024],
             int start_x = x * (w/px);
             int end_x = start_x + (w/px);
             int start_y = y * (h/py);
-            int end_y = start_y + (w/py);
+            int end_y = start_y + (h/py);
 
             char file[2048];
             snprintf(file, sizeof(file), "%s-%05ld-%03d%s", vti_prefix, timestep, px * y + x, ".vti");
@@ -136,11 +132,6 @@ void evolve(int timestep, double *currentfield, double *newfield, int w, int h, 
                        currentfield[index]);
                 */
             }  
-#ifndef performance
-        int coordinates[2];
-        MPI_Cart_coords(*comm, rank, 2, coordinates);
-        writeVTK2(timestep, currentfield, "gol", w, h, coordinates[1]*(w - 2), coordinates[0]*(h-2));
-#endif
     }
 }
 
@@ -314,6 +305,9 @@ void game(MPI_Comm* comm, long timeSteps, int tw, int th, int px, int py) {
         evolve(t, currentfield, newfield, w, h, comm);
 
 #ifndef performance
+        int coordinates[2];
+        MPI_Cart_coords(*comm, rank, 2, coordinates);
+        writeVTK2(t, currentfield, "gol", w, h, coordinates[1]*(w - 2), coordinates[0]*(h-2), px, coordinates);
         if(rank == 0) {
             writeVTK2_parallel(t, "golp", "gol", tw*px, th*py, px, py);
             printf("%ld timestep\n", t);

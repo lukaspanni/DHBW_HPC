@@ -11,7 +11,7 @@ CFLAGS  = -g -Wall -std=c99 -lc -D _BSD_SOURCE -fopenmp -lm
 TARGET = gameoflife
 
 # number of processes
-PROC = 2
+PROC = 4
 
 all: $(TARGET)
 

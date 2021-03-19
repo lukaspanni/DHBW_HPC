@@ -22,8 +22,8 @@ void writeVTK2(long timestep, const double *data, char prefix[1024], int process
 
     fprintf(fp, "<?xml version=\"1.0\"?>\n");
     fprintf(fp, "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\" header_type=\"UInt64\">\n");
-    fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d 0 0\" Origin=\"0 0 0\" Spacing=\"1.0 1.0 0.0\">\n", offsetY, offsetY + processHeight - 2, offsetX,
-            offsetX + processWidth - 2);
+    fprintf(fp, "<ImageData WholeExtent=\"%d %d %d %d 0 0\" Origin=\"0 0 0\" Spacing=\"1.0 1.0 0.0\">\n", offsetX,
+            offsetX + processWidth - 2, offsetY, offsetY + processHeight - 2);
     fprintf(fp, "<CellData Scalars=\"%s\">\n", prefix);
     fprintf(fp, "<DataArray type=\"Float32\" Name=\"%s\" format=\"appended\" offset=\"0\"/>\n", prefix);
     fprintf(fp, "</CellData>\n");
@@ -307,7 +307,7 @@ void game(MPI_Comm* comm, long timeSteps, int tw, int th, int px, int py) {
 #ifndef performance
         int coordinates[2];
         MPI_Cart_coords(*comm, rank, 2, coordinates);
-        writeVTK2(t, currentfield, "gol", w, h, coordinates[1]*(w - 2), coordinates[0]*(h-2), px, coordinates);
+        writeVTK2(t, currentfield, "gol", w, h, coordinates[0]*(w-2), coordinates[1]*(h - 2), px, coordinates);
         if(rank == 0) {
             writeVTK2_parallel(t, "golp", "gol", tw*px, th*py, px, py);
             printf("%ld timestep\n", t);
@@ -341,7 +341,7 @@ void game(MPI_Comm* comm, long timeSteps, int tw, int th, int px, int py) {
 int main(int c, char **v) {
     MPI_Init(&c, &v);
 
-    srand(42 * 0x815);
+    //srand(42 * 0x815);
     long n = 0;
     int tw = 0, th = 0, px = 0, py = 0;
     if(c > 1) n = atoi(v[1]);   ///< read timeSteps
